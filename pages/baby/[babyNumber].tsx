@@ -110,12 +110,7 @@ export default function BabyPage() {
     alert("✅ 저장 완료!");
   };
 
-  const handleDelete = async (record: RecordEntry) => {
-    if (!babyInfo || !record.date || !record.time || !record.type) return;
-    const recordId = `${record.date}-${record.time}-${record.type}`;
-    await deleteDoc(doc(db, `babies/${babyInfo.id}/records`, recordId));
-    await fetchRecords();
-  };
+ 
 
   const fetchRecords = async () => {
     if (!babyInfo) return;

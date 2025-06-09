@@ -7,9 +7,7 @@ import {
   getDocs,
   doc,
   setDoc,
-  getDoc,
   query,
-  orderBy,
 } from "firebase/firestore";
 
 interface Baby {
