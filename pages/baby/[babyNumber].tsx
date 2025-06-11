@@ -8,6 +8,10 @@ import {
 } from "firebase/firestore";
 import { format, startOfWeek, addDays } from "date-fns";
 
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ResponsiveContainer
+} from "recharts";
+
 interface Baby {
   id: string;
   name: string;
@@ -81,6 +85,35 @@ export default function BabyPage() {
     });
     fetchRecords();
   };
+
+  // ✅ 삭제 및 시간 수정 기능 포함한 handleDeleteRecord
+const handleDeleteRecord = async (time: string, type: string) => {
+  if (!babyInfo || !selectedDate) return;
+  const recordId = `${selectedDate}-${time}-${type}`;
+  const docRef = doc(db, `babies/${babyInfo.id}/records`, recordId);
+  await setDoc(docRef, {}, { merge: false }); // 빈 문서로 덮어쓰기 (삭제는 firestore delete()로 변경 가능)
+  fetchRecords();
+};
+
+
+// ✅ 시간 수정 시 기존 레코드 삭제 + 새로운 시간으로 등록
+const handleUpdateTime = async (oldTime: string, newTime: string) => {
+  if (!babyInfo || !selectedDate) return;
+  const timeRecords = records.filter((r) => r.date === selectedDate && r.time === oldTime);
+  for (const rec of timeRecords) {
+    const oldId = `${selectedDate}-${oldTime}-${rec.type}`;
+    const newId = `${selectedDate}-${newTime}-${rec.type}`;
+    const oldRef = doc(db, `babies/${babyInfo.id}/records`, oldId);
+    const newRef = doc(db, `babies/${babyInfo.id}/records`, newId);
+    await setDoc(newRef, {
+      ...rec,
+      time: newTime,
+      updatedAt: Timestamp.now(),
+    });
+    await setDoc(oldRef, {}, { merge: false });
+  }
+  fetchRecords();
+};
   
 
   const handleSave = async () => {
@@ -160,44 +193,74 @@ export default function BabyPage() {
     return { date, feeding, breastfeeding, breastToMl, urine, poop, weight };
   });
 
+  const FeedingChart = ({ summary }: { summary: typeof weeklySummary }) => {
+    const chartData = summary.map(day => ({
+      date: day.date.slice(5), // MM-DD
+      total: day.feeding + day.breastToMl,
+      feeding: day.feeding,
+      breast: day.breastToMl,
+    }))};
+
+    const chartData = weeklySummary.map(item => ({
+      ...item,
+      totalMilk: (item.feeding || 0) + (item.breastToMl || 0),
+    }));
+
 
     // ✅ AI 분석 결과 생성 함수
     const generateAIAnalysis = () => {
-        if (!weeklySummary || weeklySummary.length === 0) return null;
+      if (!weeklySummary || weeklySummary.length === 0) return null;
     
-        const lastDay = weeklySummary[6];
-        const firstDay = weeklySummary[0];
-        const totalFeedingMl = weeklySummary.reduce((sum, d) => sum + d.feeding + d.breastToMl, 0);
-        const avgFeeding = Math.round(totalFeedingMl / 7);
+      const lastDay = weeklySummary[6];
+      const firstDay = weeklySummary[0];
+      const totalFeedingMl = weeklySummary.reduce((sum, d) => sum + d.feeding + d.breastToMl, 0);
+      const avgFeeding = Math.round(totalFeedingMl / 7);
+      const weightChange = lastDay.weight && firstDay.weight ? lastDay.weight - firstDay.weight : null;
+      const messages = [];
     
-        const weightChange =
-          lastDay.weight && firstDay.weight ? lastDay.weight - firstDay.weight : null;
+      // ✅ 수유량 평균
+      if (avgFeeding < 400) {
+        messages.push("⚠️ 하루 평균 수유량이 적어요. 충분히 먹고 있는지 확인해주세요.");
+      } else {
+        messages.push("✅ 하루 평균 수유량이 적정 수준입니다.");
+      }
     
-        const messages = [];
+      // ✅ 수유량 변동성 분석
+      const feedingAmounts = weeklySummary.map(d => d.feeding + d.breastToMl);
+      const max = Math.max(...feedingAmounts);
+      const min = Math.min(...feedingAmounts);
+      const diff = max - min;
+      if (diff > 200) {
+        messages.push("📉 수유량의 일간 변동폭이 커요. 일정한 패턴을 만들어주세요.");
+      } else {
+        messages.push("📈 수유량이 안정적으로 유지되고 있어요.");
+      }
     
-        if (avgFeeding < 400) {
-          messages.push("⚠️ 하루 평균 수유량이 적어요. 충분히 먹고 있는지 확인해주세요.");
+      // ✅ 체중 변화
+      if (weightChange !== null) {
+        if (weightChange < 0) {
+          messages.push(`⚠️ 체중이 감소했어요 (${firstDay.weight}kg → ${lastDay.weight}kg).`);
+        } else if (weightChange === 0) {
+          messages.push("ℹ️ 이번 주 동안 체중 변화가 없었습니다.");
         } else {
-          messages.push("✅ 하루 평균 수유량이 적정 수준입니다.");
+          messages.push(`✅ 체중이 증가했어요! (+${weightChange.toFixed(2)}kg)`);
         }
+      }
     
-        if (weightChange !== null) {
-          if (weightChange < 0) {
-            messages.push(`⚠️ 체중이 감소했어요 (${firstDay.weight}kg → ${lastDay.weight}kg).`);
-          } else if (weightChange === 0) {
-            messages.push("ℹ️ 이번 주 동안 체중 변화가 없었습니다.");
-          } else {
-            messages.push(`✅ 체중이 증가했어요! (+${weightChange.toFixed(2)}kg)`);
-          }
-        }
+      // ✅ 배변 리듬 분석
+      const poopDays = weeklySummary.map(d => d.poop);
+      const zeroPoop = poopDays.filter(c => c === 0).length;
+      if (zeroPoop >= 3) {
+        messages.push("🚨 이번 주 중 3일 이상 대변 기록이 없습니다. 변비 가능성을 확인해주세요.");
+      } else if (poopDays.every(c => c >= 1)) {
+        messages.push("✅ 대변이 매일 규칙적으로 있었습니다.");
+      } else {
+        messages.push("ℹ️ 배변 패턴이 불규칙합니다. 추이를 관찰해주세요.");
+      }
     
-        const poopCount = weeklySummary.reduce((sum, d) => sum + d.poop, 0);
-        if (poopCount < 3) {
-          messages.push("💩 대변 횟수가 적습니다. 변비 여부를 확인해주세요.");
-        }
+      return messages;
+    };
     
-        return messages;
-      };
     
       const aiMessages = generateAIAnalysis();
     
@@ -232,162 +295,227 @@ export default function BabyPage() {
             />
           </div>
       
-          {/* 입력 섹션 */}
-          <div style={{ marginTop: "20px", backgroundColor: "#fdfdfd", borderRadius: "8px", padding: "16px" }}>
-            <h3>📝 기록 입력</h3>
-            <div style={{ marginBottom: "16px" }}>
-              <label>🕒 시간 (15분 단위):</label><br />
-              <input
-                type="time"
-                step="900"
-                value={selectedTime}
-                onChange={(e) => setSelectedTime(e.target.value)}
-                style={{ padding: "8px", width: "100%" }}
-              />
-            </div>
-      
-            <div style={{ marginBottom: "16px" }}>
-              <label>📌 항목 선택:</label><br />
-              <select
-                value={recordType}
-                onChange={(e) => setRecordType(e.target.value)}
-                style={{ padding: "8px", width: "100%" }}
-              >
-                <option value="feeding">🍼 분유</option>
-                <option value="breastmilk">🤱 모유 (분)</option>
-                <option value="urine">💧 소변</option>
-                <option value="poop">💩 대변</option>
-              </select>
-            </div>
-      
-            <div style={{ marginBottom: "16px" }}>
-              <label>💾 입력 값:</label><br />
-              <input
-                type="number"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="수유량 (ml) / 모유 시간 (분) / 1회"
-                style={{ padding: "8px", width: "100%" }}
-              />
-            </div>
-      
-            <button
-              onClick={() => {
-                if (loading || !value || !selectedTime || !recordType) return;
-                handleSave();
-              }}
-              disabled={loading || !value || !selectedTime || !recordType}
-              style={{ padding: "10px 20px", backgroundColor: "#2b72ff", color: "#fff", border: "none", borderRadius: "4px" }}
+                  {/* 입력 섹션 */}
+                  <div
+          style={{
+            marginTop: "20px",
+            padding: "20px",
+            borderRadius: "8px",
+            backgroundColor: "#f0f8ff", // 연한 하늘색 배경
+            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
+          }}
+        >
+          <h3 style={{ marginBottom: "16px", fontWeight: "bold" }}>📝 기록 입력</h3>
+
+          <div style={{ marginBottom: "16px" }}>
+  <label>🕒 시간 선택 (0~24시, 15분 단위):</label><br />
+  <div style={{ display: "flex", gap: "8px" }}>
+    {/* 시간 드롭다운 */}
+    <select
+      value={selectedTime.split(":")[0]} // 시
+      onChange={(e) => {
+        const newHour = e.target.value.padStart(2, "0");
+        const minutes = selectedTime.split(":")[1] || "00";
+        setSelectedTime(`${newHour}:${minutes}`);
+      }}
+      style={{ flex: 1, padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
+    >
+      {Array.from({ length: 25 }).map((_, i) => (
+        <option key={i} value={String(i).padStart(2, "0")}>
+          {String(i).padStart(2, "0")}시
+        </option>
+      ))}
+    </select>
+
+    {/* 분 드롭다운 */}
+    <select
+      value={selectedTime.split(":")[1]} // 분
+      onChange={(e) => {
+        const hour = selectedTime.split(":")[0] || "00";
+        const newMin = e.target.value.padStart(2, "0");
+        setSelectedTime(`${hour}:${newMin}`);
+      }}
+      style={{ flex: 1, padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
+    >
+      {["00", "15", "30", "45"].map((m) => (
+        <option key={m} value={m}>
+          {m}분
+        </option>
+      ))}
+    </select>
+  </div>
+</div>
+
+
+          <div style={{ marginBottom: "16px" }}>
+            <label>📌 항목 선택:</label><br />
+            <select
+              value={recordType}
+              onChange={(e) => setRecordType(e.target.value)}
+              style={{ padding: "8px", width: "100%", borderRadius: "4px", border: "1px solid #ccc" }}
             >
-              {loading ? "저장 중..." : "기록 저장하기"}
-            </button>
-      
-            <div style={{ marginTop: "20px" }}>
-              <label>⚖️ 몸무게 (kg):</label><br />
-              <input
-                type="number"
-                value={weight}
-                onChange={(e) => setWeight(e.target.value)}
-                placeholder="몸무게 입력"
-                style={{ padding: "8px", width: "100%" }}
-              />
-              <button
-                onClick={async () => {
-                  if (!babyInfo || !weight) return;
-                  const weightRef = doc(db, `babies/${babyInfo.id}/records`, `${selectedDate}-weight`);
-                  await setDoc(weightRef, {
-                    date: selectedDate,
-                    type: "weight",
-                    value: Number(weight),
-                    createdAt: Timestamp.now(),
-                  });
-                  setWeight("");
-                  fetchRecords();
-                  alert("✅ 몸무게 저장 완료!");
-                }}
-                disabled={!weight}
-                style={{ marginTop: "8px", padding: "10px 20px", backgroundColor: "#28a745", color: "#fff", border: "none", borderRadius: "4px" }}
-              >
-                몸무게 저장하기
-              </button>
-            </div>
+              <option value="feeding">🍼 분유</option>
+              <option value="breastmilk">🤱 모유 (분)</option>
+              <option value="urine">💧 소변</option>
+              <option value="poop">💩 대변</option>
+            </select>
           </div>
-      
-          {/* 데일리 기록 출력 */}
-          <div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fdfdfd", borderRadius: "8px" }}>
+
+          <div style={{ marginBottom: "16px" }}>
+            <label>💾 입력 값:</label><br />
+            <input
+              type="number"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="수유량 (ml) / 모유 시간 (분) / 1회"
+              style={{ padding: "8px", width: "100%", borderRadius: "4px", border: "1px solid #ccc" }}
+            />
+          </div>
+
+          <button
+            onClick={() => {
+              if (loading || !value || !selectedTime || !recordType) return;
+              handleSave();
+            }}
+            disabled={loading || !value || !selectedTime || !recordType}
+            style={{
+              padding: "10px 20px",
+              backgroundColor: "#2b72ff",
+              color: "#fff",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "저장 중..." : "기록 저장하기"}
+          </button>
+        </div>
+
+{/* 몸무게 입력 섹션 */}
+<div style={{ marginTop: "20px", backgroundColor: "#f9fff9", borderRadius: "8px", padding: "16px" }}>
+  <h3>⚖️ 몸무게 입력</h3>
+  <div style={{ marginBottom: "16px" }}>
+    <label>몸무게 (kg):</label><br />
+    <input
+      type="number"
+      value={weight}
+      onChange={(e) => setWeight(e.target.value)}
+      placeholder="몸무게 입력"
+      style={{ padding: "8px", width: "100%" }}
+    />
+    <button
+      onClick={async () => {
+        if (!babyInfo || !weight) return;
+        const weightRef = doc(db, `babies/${babyInfo.id}/records`, `${selectedDate}-weight`);
+        await setDoc(weightRef, {
+          date: selectedDate,
+          type: "weight",
+          value: Number(weight),
+          createdAt: Timestamp.now(),
+        });
+        setWeight("");
+        fetchRecords();
+        alert("✅ 몸무게 저장 완료!");
+      }}
+      disabled={!weight}
+      style={{ marginTop: "8px", padding: "10px 20px", backgroundColor: "#28a745", color: "#fff", border: "none", borderRadius: "4px" }}
+    >
+      몸무게 저장하기
+    </button>
+  </div>
+</div>
+
+{/* 데일리 기록 출력 */}
+<div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fdfdfd", borderRadius: "8px" }}>
             <h2>📋 데일리 기록 ({selectedDate})</h2>
-      
-         {dailyGrouped.length > 0 ? (
-                  <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    marginTop: "16px",
-                    backgroundColor: "#ffffff",
-                    color: "#000",
-                    border: "1px solid #ccc",
-                  }}
-                >
-                  <thead style={{ backgroundColor: "#f0f0f0" }}>
-                    <tr>
-                      <th style={thStyle}>시간</th>
-                      <th style={thStyle}>분유(ml)</th>
-                      <th style={thStyle}>모유(분)</th>
-                      <th style={thStyle}>소변</th>
-                      <th style={thStyle}>대변</th>
+
+            {dailyGrouped.length > 0 ? (
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  marginTop: "16px",
+                  backgroundColor: "#ffffff",
+                  color: "#000",
+                  border: "1px solid #ccc",
+                }}
+              >
+                <thead style={{ backgroundColor: "#f0f0f0" }}>
+                  <tr>
+                    <th style={thStyle}>시간</th>
+                    <th style={thStyle}>분유(ml)</th>
+                    <th style={thStyle}>모유(분)</th>
+                    <th style={thStyle}>소변</th>
+                    <th style={thStyle}>대변</th>
+                    <th style={thStyle}>삭제</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyGrouped.map((row, idx) => (
+                    <tr key={idx}>
+                      <td style={tdStyle}>{row.time}</td>
+                      {["feeding", "breastmilk", "urine", "poop"].map((type) => (
+                        <td
+                          key={type}
+                          style={{
+                            ...tdStyle,
+                            backgroundColor: "#fffbe6",
+                            cursor: "pointer",
+                            textAlign: "center",
+                          }}
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => {
+                            const newValue = e.currentTarget.textContent?.trim() || "";
+                            if (newValue && row.time && row.time !== "합계") {
+                              handleUpdateRecord(row.time, type, newValue);
+                            }
+                          }}
+                        >
+                          {row[type as keyof typeof row]}
+                        </td>
+                      ))}
+                      <td style={{ ...tdStyle, textAlign: "center" }}>
+                        <button
+                          onClick={async () => {
+                            if (!babyInfo || !row.time) return;
+                            const types = ["feeding", "breastmilk", "urine", "poop"];
+                            const promises = types.map((type) => {
+                              const recordId = `${selectedDate}-${row.time}-${type}`;
+                              return doc(db, `babies/${babyInfo.id}/records`, recordId);
+                            });
+                            try {
+                              await Promise.all(
+                                promises.map((ref) => setDoc(ref, {}, { merge: false }))
+                              );
+                              await fetchRecords();
+                              alert(`🗑️ ${row.time}시 기록이 삭제되었습니다.`);
+                            } catch (err) {
+                              console.error("삭제 오류:", err);
+                              alert("❌ 삭제 중 오류가 발생했습니다.");
+                            }
+                          }}
+                          style={{
+                            padding: "4px 8px",
+                            backgroundColor: "#dc3545",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          삭제
+                        </button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {dailyGrouped.map((row, idx) => (
-                      <tr key={idx}>
-                        <td style={tdStyle}>{row.time}</td>
-                        {["feeding", "breastmilk", "urine", "poop"].map((type) => (
-                          <td
-                            key={type}
-                            style={{
-                              ...tdStyle,
-                              backgroundColor: "#fffbe6",
-                              cursor: "pointer",
-                              textAlign: "center",
-                            }}
-                            contentEditable
-                            suppressContentEditableWarning
-                            onBlur={(e) => {
-                              const newValue = e.currentTarget.textContent?.trim() || "";
-                              if (newValue && row.time !== "합계") {
-                                handleUpdateRecord(row.time!, type, newValue);
-                              }
-                            }}
-                          >
-                            {row[type as keyof typeof row]}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                
-                    {/* ✅ 마지막 요약 행 */}
-                    <tr style={{ backgroundColor: "#f9f9f9", fontWeight: "bold" }}>
-                      <td style={tdStyle}>합계</td>
-                      <td style={tdStyle}>
-                        {dailyGrouped.reduce((sum, r) => sum + Number(r.feeding || 0), 0)}
-                      </td>
-                      <td style={tdStyle}>
-                        {dailyGrouped.reduce((sum, r) => sum + Number(r.breastmilk || 0), 0)}
-                      </td>
-                      <td style={tdStyle}>
-                        {dailyGrouped.reduce((sum, r) => sum + Number(r.urine || 0), 0)}
-                      </td>
-                      <td style={tdStyle}>
-                        {dailyGrouped.reduce((sum, r) => sum + Number(r.poop || 0), 0)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                
-                
-                ) : <p>기록 없음</p>}
-      
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p>기록 없음</p>
+            )}
           </div>
+
       
           {/* 주간 요약 출력 */}
           <div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fdfdfd", borderRadius: "8px" }}>
@@ -437,6 +565,30 @@ export default function BabyPage() {
               <p>분석할 데이터가 부족합니다. 일주일 이상의 기록이 필요합니다.</p>
             )}
           </div>
+
+
+
+            {/* 📊 수유량 차트 시각화 */}
+ <div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fffaf0", borderRadius: "8px" }}>
+  <h2>📊 주간 수유량 차트</h2>
+  <ResponsiveContainer width="100%" height={300}>
+    <LineChart data={chartData}>
+      <XAxis dataKey="date" />
+      <YAxis />
+      <Tooltip />
+      <Legend />
+      <Line type="monotone" dataKey="feeding" name="분유" stroke="#8884d8" />
+      <Line type="monotone" dataKey="breastToMl" name="모유(환산)" stroke="#82ca9d" />
+      <Line type="monotone" dataKey="totalMilk" name="총 수유량" stroke="#ff7300" strokeWidth={2} dot={{ r: 3 }} />
+    </LineChart>
+  </ResponsiveContainer>
+</div>
+
+
+    
+
+
+          
         </div>
       );
       
