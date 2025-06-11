@@ -9,7 +9,7 @@ import {
 import { format, startOfWeek, addDays } from "date-fns";
 
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ResponsiveContainer
+  LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 
 interface Baby {
@@ -44,7 +44,6 @@ export default function BabyPage() {
   const router = useRouter();
   const { babyNumber } = router.query;
   const [babyInfo, setBabyInfo] = useState<Baby | null>(null);
-  const [activeTab, setActiveTab] = useState<"input" | "output" | "ai">("input");
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [selectedTime, setSelectedTime] = useState<string>("00:00");
   const [recordType, setRecordType] = useState("feeding");
@@ -85,35 +84,6 @@ export default function BabyPage() {
     });
     fetchRecords();
   };
-
-  // ✅ 삭제 및 시간 수정 기능 포함한 handleDeleteRecord
-const handleDeleteRecord = async (time: string, type: string) => {
-  if (!babyInfo || !selectedDate) return;
-  const recordId = `${selectedDate}-${time}-${type}`;
-  const docRef = doc(db, `babies/${babyInfo.id}/records`, recordId);
-  await setDoc(docRef, {}, { merge: false }); // 빈 문서로 덮어쓰기 (삭제는 firestore delete()로 변경 가능)
-  fetchRecords();
-};
-
-
-// ✅ 시간 수정 시 기존 레코드 삭제 + 새로운 시간으로 등록
-const handleUpdateTime = async (oldTime: string, newTime: string) => {
-  if (!babyInfo || !selectedDate) return;
-  const timeRecords = records.filter((r) => r.date === selectedDate && r.time === oldTime);
-  for (const rec of timeRecords) {
-    const oldId = `${selectedDate}-${oldTime}-${rec.type}`;
-    const newId = `${selectedDate}-${newTime}-${rec.type}`;
-    const oldRef = doc(db, `babies/${babyInfo.id}/records`, oldId);
-    const newRef = doc(db, `babies/${babyInfo.id}/records`, newId);
-    await setDoc(newRef, {
-      ...rec,
-      time: newTime,
-      updatedAt: Timestamp.now(),
-    });
-    await setDoc(oldRef, {}, { merge: false });
-  }
-  fetchRecords();
-};
   
 
   const handleSave = async () => {
@@ -193,18 +163,13 @@ const handleUpdateTime = async (oldTime: string, newTime: string) => {
     return { date, feeding, breastfeeding, breastToMl, urine, poop, weight };
   });
 
-  const FeedingChart = ({ summary }: { summary: typeof weeklySummary }) => {
-    const chartData = summary.map(day => ({
-      date: day.date.slice(5), // MM-DD
-      total: day.feeding + day.breastToMl,
-      feeding: day.feeding,
-      breast: day.breastToMl,
-    }))};
+  const chartData = weeklySummary.map(item => ({
+    date: item.date.slice(5), // MM-DD
+    feeding: item.feeding,
+    breast: item.breastToMl,
+    total: (item.feeding || 0) + (item.breastToMl || 0),
+  }));
 
-    const chartData = weeklySummary.map(item => ({
-      ...item,
-      totalMilk: (item.feeding || 0) + (item.breastToMl || 0),
-    }));
 
 
     // ✅ AI 분석 결과 생성 함수
@@ -572,16 +537,16 @@ const handleUpdateTime = async (oldTime: string, newTime: string) => {
  <div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fffaf0", borderRadius: "8px" }}>
   <h2>📊 주간 수유량 차트</h2>
   <ResponsiveContainer width="100%" height={300}>
-    <LineChart data={chartData}>
-      <XAxis dataKey="date" />
-      <YAxis />
-      <Tooltip />
-      <Legend />
-      <Line type="monotone" dataKey="feeding" name="분유" stroke="#8884d8" />
-      <Line type="monotone" dataKey="breastToMl" name="모유(환산)" stroke="#82ca9d" />
-      <Line type="monotone" dataKey="totalMilk" name="총 수유량" stroke="#ff7300" strokeWidth={2} dot={{ r: 3 }} />
-    </LineChart>
-  </ResponsiveContainer>
+      <LineChart data={chartData}>
+        <XAxis dataKey="date" />
+        <YAxis />
+        <Tooltip />
+        <Legend />
+        <Line type="monotone" dataKey="feeding" name="분유" stroke="#8884d8" />
+        <Line type="monotone" dataKey="breast" name="모유(환산)" stroke="#82ca9d" />
+        <Line type="monotone" dataKey="total" name="총합" stroke="#ff7300" />
+      </LineChart>
+    </ResponsiveContainer>
 </div>
 
 
