@@ -1,7 +1,7 @@
 // pages/baby/[babyNumber].tsx
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/firebase";import { useCallback } from "react";
 import {
   collection, getDocs, setDoc, doc,
   getDoc, query, Timestamp,
@@ -11,6 +11,8 @@ import { format, startOfWeek, addDays } from "date-fns";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
+
+
 
 interface Baby {
   id: string;
@@ -71,6 +73,26 @@ export default function BabyPage() {
     return Math.floor((today.getTime() - birth.getTime()) / (1000 * 60 * 60 * 24));
   };
 
+  const fetchRecords = useCallback(async () => {
+    if (!babyInfo) return;
+    const end = new Date(selectedDate);
+    const start = addDays(end, -6);
+    const q = query(collection(db, `babies/${babyInfo.id}/records`));
+    const snapshot = await getDocs(q);
+    const result: RecordEntry[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data.date && data.date >= format(start, "yyyy-MM-dd") && data.date <= format(end, "yyyy-MM-dd")) {
+        result.push(data as RecordEntry);
+      }
+    });
+    setRecords(result);
+  }, [babyInfo, selectedDate]);
+
+  useEffect(() => {
+    fetchRecords();
+  }, [fetchRecords]);
+
   const handleUpdateRecord = async (time: string, type: string, newValue: string | null) => {
     if (!babyInfo || !selectedDate || !newValue) return;
     const recordId = `${selectedDate}-${time}-${type}`;
@@ -115,35 +137,6 @@ export default function BabyPage() {
   };
 
  
-
-  const fetchRecords = async () => {
-    if (!babyInfo) return;
-  
-    const end = new Date(selectedDate);
-    const start = addDays(end, -6); // 기준일 포함하여 과거 7일
-    const startStr = format(start, "yyyy-MM-dd");
-    const endStr = format(end, "yyyy-MM-dd");
-  
-    const q = query(collection(db, `babies/${babyInfo.id}/records`));
-    const snapshot = await getDocs(q);
-  
-    const result: RecordEntry[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (data.date && data.date >= startStr && data.date <= endStr) {
-        result.push(data as RecordEntry);
-      }
-    });
-  
-    setRecords(result);
-  };
-  
-  
-
-  useEffect(() => {
-    fetchRecords();
-  }, [babyInfo, selectedDate]);
-
   const dailyRecords = records
     .filter((r) => r.date === selectedDate)
     .sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""));
