@@ -119,9 +119,8 @@ export default function BabyPage() {
   const fetchRecords = async () => {
     if (!babyInfo) return;
   
-    // 선택된 날짜 기준 해당 주의 시작일과 종료일을 문자열로 구함
-    const start = startOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
-    const end = addDays(start, 6);
+    const end = new Date(selectedDate);
+    const start = addDays(end, -6); // 기준일 포함하여 과거 7일
     const startStr = format(start, "yyyy-MM-dd");
     const endStr = format(end, "yyyy-MM-dd");
   
@@ -131,8 +130,6 @@ export default function BabyPage() {
     const result: RecordEntry[] = [];
     snapshot.forEach((docSnap) => {
       const data = docSnap.data();
-  
-      // 날짜 필드가 있는지 확인 후 필터링
       if (data.date && data.date >= startStr && data.date <= endStr) {
         result.push(data as RecordEntry);
       }
@@ -140,6 +137,7 @@ export default function BabyPage() {
   
     setRecords(result);
   };
+  
   
 
   useEffect(() => {
@@ -161,23 +159,25 @@ export default function BabyPage() {
   });
 
   const weeklySummary = Array.from({ length: 7 }, (_, i) => {
-    const date = format(addDays(startOfWeek(new Date(selectedDate), { weekStartsOn: 0 }), i), "yyyy-MM-dd");
+    const date = format(addDays(new Date(selectedDate), -6 + i), "yyyy-MM-dd");
     const dayRecords = records.filter((r) => r.date === date);
     const feeding = dayRecords.filter((r) => r.type === "feeding").reduce((sum, r) => sum + r.value, 0);
     const breastfeeding = dayRecords.filter((r) => r.type === "breastmilk").reduce((sum, r) => sum + r.value, 0);
-    const breastToMl = breastfeeding * 5; // 환산 공식: 1분당 5ml
+    const breastToMl = breastfeeding * 5;
     const urine = dayRecords.filter((r) => r.type === "urine").length;
     const poop = dayRecords.filter((r) => r.type === "poop").length;
     const weight = dayRecords.find((r) => r.type === "weight")?.value || null;
     return { date, feeding, breastfeeding, breastToMl, urine, poop, weight };
   });
+  
 
-  const chartData = weeklySummary.map(item => ({
-    date: item.date.slice(5), // MM-DD
-    feeding: item.feeding,
-    breast: item.breastToMl,
-    total: (item.feeding || 0) + (item.breastToMl || 0),
+  const chartData = weeklySummary.map(day => ({
+    date: day.date.slice(5), // MM-DD
+    total: (day.feeding || 0) + (day.breastToMl || 0),
+    feeding: day.feeding,
+    breast: day.breastToMl,
   }));
+  
 
 
 
