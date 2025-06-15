@@ -104,11 +104,8 @@ export default function BabyPage() {
       value: Number(newValue),
       updatedAt: Timestamp.now(),
     });
+    await fetchRecords(); 
 
-    useEffect(() => {
-      fetchRecords();
-    }, [fetchRecords]);
-    
   };
   
 
