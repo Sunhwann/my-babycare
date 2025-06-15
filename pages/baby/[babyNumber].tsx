@@ -118,20 +118,29 @@ export default function BabyPage() {
 
   const fetchRecords = async () => {
     if (!babyInfo) return;
+  
+    // 선택된 날짜 기준 해당 주의 시작일과 종료일을 문자열로 구함
     const start = startOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
     const end = addDays(start, 6);
+    const startStr = format(start, "yyyy-MM-dd");
+    const endStr = format(end, "yyyy-MM-dd");
+  
     const q = query(collection(db, `babies/${babyInfo.id}/records`));
     const snapshot = await getDocs(q);
+  
     const result: RecordEntry[] = [];
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      const date = new Date(data.date);
-      if (date >= start && date <= end) {
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+  
+      // 날짜 필드가 있는지 확인 후 필터링
+      if (data.date && data.date >= startStr && data.date <= endStr) {
         result.push(data as RecordEntry);
       }
     });
+  
     setRecords(result);
   };
+  
 
   useEffect(() => {
     fetchRecords();
@@ -187,7 +196,31 @@ export default function BabyPage() {
       if (avgFeeding < 400) {
         messages.push("⚠️ 하루 평균 수유량이 적어요. 충분히 먹고 있는지 확인해주세요.");
       } else {
-        messages.push("✅ 하루 평균 수유량이 적정 수준입니다.");
+        messages.push("✅ 하루 평균 수유량이 적정 수준입니다.");const fetchRecords = async () => {
+          if (!babyInfo) return;
+        
+          // 선택된 날짜 기준 해당 주의 시작일과 종료일을 문자열로 구함
+          const start = startOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
+          const end = addDays(start, 6);
+          const startStr = format(start, "yyyy-MM-dd");
+          const endStr = format(end, "yyyy-MM-dd");
+        
+          const q = query(collection(db, `babies/${babyInfo.id}/records`));
+          const snapshot = await getDocs(q);
+        
+          const result: RecordEntry[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+        
+            // 날짜 필드가 있는지 확인 후 필터링
+            if (data.date && data.date >= startStr && data.date <= endStr) {
+              result.push(data as RecordEntry);
+            }
+          });
+        
+          setRecords(result);
+        };
+        
       }
     
       // ✅ 수유량 변동성 분석
