@@ -6,7 +6,7 @@ import {
   collection, getDocs, setDoc, doc,
   getDoc, query, Timestamp,
 } from "firebase/firestore";
-import { format, startOfWeek, addDays } from "date-fns";
+import { format, addDays } from "date-fns";
 
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer
