@@ -9,9 +9,16 @@ import {
 import { format, addDays } from "date-fns";
 
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer
-} from "recharts";
-
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Brush,
+  CartesianGrid,
+} from 'recharts';
 
 
 interface Baby {
@@ -146,30 +153,44 @@ export default function BabyPage() {
 
   const dailyGrouped = timesWithRecords.map((time) => {
     const feeding = dailyRecords.find(r => r.time === time && r.type === "feeding")?.value || "";
+    const breastmilk_ml = dailyRecords.find(r => r.time === time && r.type === "breastmilk_ml")?.value || "";
     const breastmilk = dailyRecords.find(r => r.time === time && r.type === "breastmilk")?.value || "";
     const urine = dailyRecords.find(r => r.time === time && r.type === "urine")?.value || "";
     const poop = dailyRecords.find(r => r.time === time && r.type === "poop")?.value || "";
-    return { time, feeding, breastmilk, urine, poop };
+    return { time, feeding, breastmilk_ml, breastmilk, urine, poop };
   });
+  
 
   const weeklySummary = Array.from({ length: 7 }, (_, i) => {
     const date = format(addDays(new Date(selectedDate), -6 + i), "yyyy-MM-dd");
     const dayRecords = records.filter((r) => r.date === date);
     const feeding = dayRecords.filter((r) => r.type === "feeding").reduce((sum, r) => sum + r.value, 0);
-    const breastfeeding = dayRecords.filter((r) => r.type === "breastmilk").reduce((sum, r) => sum + r.value, 0);
-    const breastToMl = breastfeeding * 5;
+    const breastDirect = dayRecords.filter((r) => r.type === "breastmilk").reduce((sum, r) => sum + r.value, 0);
+    const breastExtracted = dayRecords.filter((r) => r.type === "breastmilk_ml").reduce((sum, r) => sum + r.value, 0);
+    const breastToMl = breastDirect * 5;
     const urine = dayRecords.filter((r) => r.type === "urine").length;
     const poop = dayRecords.filter((r) => r.type === "poop").length;
     const weight = dayRecords.find((r) => r.type === "weight")?.value || null;
-    return { date, feeding, breastfeeding, breastToMl, urine, poop, weight };
+  
+    return {
+      date,
+      feeding,
+      breastDirect,
+      breastExtracted,
+      breastToMl,
+      urine,
+      poop,
+      weight,
+    };
   });
   
 
   const chartData = weeklySummary.map(day => ({
-    date: day.date.slice(5), // MM-DD
-    total: (day.feeding || 0) + (day.breastToMl || 0),
+    date: day.date.slice(5),
+    total: day.feeding + day.breastToMl + day.breastExtracted,
     feeding: day.feeding,
     breast: day.breastToMl,
+    breastExtracted: day.breastExtracted,
   }));
   
 
@@ -181,8 +202,9 @@ export default function BabyPage() {
     
       const lastDay = weeklySummary[6];
       const firstDay = weeklySummary[0];
-      const totalFeedingMl = weeklySummary.reduce((sum, d) => sum + d.feeding + d.breastToMl, 0);
-      const avgFeeding = Math.round(totalFeedingMl / 7);
+      const totalFeedingMl = weeklySummary.reduce((sum, d) =>
+        sum + d.feeding + d.breastToMl + d.breastExtracted, 0);
+            const avgFeeding = Math.round(totalFeedingMl / 7);
       const weightChange = lastDay.weight && firstDay.weight ? lastDay.weight - firstDay.weight : null;
       const messages = [];
     
@@ -253,124 +275,199 @@ export default function BabyPage() {
             </div>
           )}
       
-          <div style={{ marginTop: "20px" }}>
-            <label><strong>📅 날짜 선택:</strong></label><br />
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              style={{ padding: "8px", marginTop: "4px", width: "100%" }}
-            />
-          </div>
-      
-                  {/* 입력 섹션 */}
+          
+          
+            {/* 좌우 카드 전체 레이아웃 */}
                   <div
-          style={{
-            marginTop: "20px",
-            padding: "20px",
-            borderRadius: "8px",
-            backgroundColor: "#f0f8ff", // 연한 하늘색 배경
-            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
+        style={{
+          display: "flex",
+          gap: "20px",
+          marginTop: "20px",
+          flexWrap: "wrap",
+          alignItems: "flex-start",
+        }}
+      >
+              
+              <div
+  style={{
+    flex: "1",
+    minWidth: "280px",
+    height: "100%", // 높이 맞춤
+    backgroundColor: "#e6f0ff", // 연한 블루
+    padding: "24px",
+    borderRadius: "8px",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between", // 높이 맞춤 핵심!
+  }}
+>
+  <div>
+    <h3 style={{ fontWeight: "bold", marginBottom: "16px" }}>📅 날짜 및 시간 선택</h3>
+
+    {/* 날짜 선택 */}
+    <div style={{ marginBottom: "20px" }}>
+      <label>날짜:</label><br />
+      <input
+        type="date"
+        value={selectedDate}
+        onChange={(e) => setSelectedDate(e.target.value)}
+        style={{
+          padding: "10px",
+          width: "100%",
+          borderRadius: "4px",
+          border: "1px solid #ccc",
+        }}
+      />
+    </div>
+
+    {/* 시간 선택 */}
+    <div>
+      <label>🕒 시간 선택:</label>
+      <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+        <select
+          value={selectedTime.split(":")[0]}
+          onChange={(e) => {
+            const hour = e.target.value.padStart(2, "0");
+            const min = selectedTime.split(":")[1] || "00";
+            setSelectedTime(`${hour}:${min}`);
           }}
+          style={{ flex: 1, padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
         >
-          <h3 style={{ marginBottom: "16px", fontWeight: "bold" }}>📝 기록 입력</h3>
-
-          <div style={{ marginBottom: "16px" }}>
-  <label>🕒 시간 선택 (0~24시, 15분 단위):</label><br />
-  <div style={{ display: "flex", gap: "8px" }}>
-    {/* 시간 드롭다운 */}
-    <select
-      value={selectedTime.split(":")[0]} // 시
-      onChange={(e) => {
-        const newHour = e.target.value.padStart(2, "0");
-        const minutes = selectedTime.split(":")[1] || "00";
-        setSelectedTime(`${newHour}:${minutes}`);
-      }}
-      style={{ flex: 1, padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
-    >
-      {Array.from({ length: 25 }).map((_, i) => (
-        <option key={i} value={String(i).padStart(2, "0")}>
-          {String(i).padStart(2, "0")}시
-        </option>
-      ))}
-    </select>
-
-    {/* 분 드롭다운 */}
-    <select
-      value={selectedTime.split(":")[1]} // 분
-      onChange={(e) => {
-        const hour = selectedTime.split(":")[0] || "00";
-        const newMin = e.target.value.padStart(2, "0");
-        setSelectedTime(`${hour}:${newMin}`);
-      }}
-      style={{ flex: 1, padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
-    >
-      {["00", "15", "30", "45"].map((m) => (
-        <option key={m} value={m}>
-          {m}분
-        </option>
-      ))}
-    </select>
+          {Array.from({ length: 25 }).map((_, i) => (
+            <option key={i} value={String(i).padStart(2, "0")}>
+              {String(i).padStart(2, "0")}시
+            </option>
+          ))}
+        </select>
+        <select
+          value={selectedTime.split(":")[1]}
+          onChange={(e) => {
+            const min = e.target.value.padStart(2, "0");
+            const hour = selectedTime.split(":")[0] || "00";
+            setSelectedTime(`${hour}:${min}`);
+          }}
+          style={{ flex: 1, padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
+        >
+          {["00", "15", "30", "45"].map((m) => (
+            <option key={m} value={m}>
+              {m}분
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
   </div>
+
+  {/* 공간 균형용 빈 div */}
+  <div style={{ height: "10px" }}></div>
 </div>
+   
 
+ {/* 우측 카드 컨테이너 */}
+<div
+  style={{
+    flex: "2",
+    minWidth: "320px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+  }}
+>
+  {/* ✅ 상단 카드: 기록 입력 */}
+  <div
+    style={{
+      padding: "16px",
+      borderRadius: "8px",
+      backgroundColor: "#e9f8e9",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+    }}
+  >
+    <h3 style={{ fontWeight: "bold", marginBottom: "16px" }}>📋 기록 입력</h3>
 
-          <div style={{ marginBottom: "16px" }}>
-            <label>📌 항목 선택:</label><br />
-            <select
-              value={recordType}
-              onChange={(e) => setRecordType(e.target.value)}
-              style={{ padding: "8px", width: "100%", borderRadius: "4px", border: "1px solid #ccc" }}
-            >
-              <option value="feeding">🍼 분유</option>
-              <option value="breastmilk">🤱 모유 (분)</option>
-              <option value="urine">💧 소변</option>
-              <option value="poop">💩 대변</option>
-            </select>
-          </div>
+    {/* 항목 선택 */}
+    <div style={{ marginBottom: "16px" }}>
+      <label style={{ display: "block", marginBottom: "4px" }}>📌 항목 선택:</label>
+      <select
+        value={recordType}
+        onChange={(e) => setRecordType(e.target.value)}
+        style={{
+          padding: "8px",
+          width: "100%",
+          borderRadius: "4px",
+          border: "1px solid #ccc",
+        }}
+      >
+        <option value="feeding">🍼 분유 (ml)</option>
+        <option value="breastmilk_ml">🍼 모유 (유축, ml)</option>
+        <option value="breastmilk">🤱 모유 (직접수유, 분)</option>
+        <option value="urine">💧 소변</option>
+        <option value="poop">💩 대변</option>
+      </select>
+    </div>
 
-          <div style={{ marginBottom: "16px" }}>
-            <label>💾 입력 값:</label><br />
-            <input
-              type="number"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="수유량 (ml) / 모유 시간 (분) / 1회"
-              style={{ padding: "8px", width: "100%", borderRadius: "4px", border: "1px solid #ccc" }}
-            />
-          </div>
+    {/* 입력 값 */}
+    <div style={{ marginBottom: "16px" }}>
+      <label style={{ display: "block", marginBottom: "4px" }}>💾 입력 값:</label>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="예: 120 / 10 / 1"
+        style={{
+          padding: "8px",
+          width: "100%",
+          borderRadius: "4px",
+          border: "1px solid #ccc",
+        }}
+      />
+    </div>
 
-          <button
-            onClick={() => {
-              if (loading || !value || !selectedTime || !recordType) return;
-              handleSave();
-            }}
-            disabled={loading || !value || !selectedTime || !recordType}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: "#2b72ff",
-              color: "#fff",
-              border: "none",
-              borderRadius: "4px",
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            {loading ? "저장 중..." : "기록 저장하기"}
-          </button>
-        </div>
+    <button
+      onClick={() => {
+        if (loading || !value || !selectedTime || !recordType) return;
+        handleSave();
+      }}
+      disabled={loading || !value || !selectedTime || !recordType}
+      style={{
+        width: "100%",
+        padding: "10px",
+        backgroundColor: "#2b72ff",
+        color: "#fff",
+        border: "none",
+        borderRadius: "4px",
+        cursor: loading ? "not-allowed" : "pointer",
+      }}
+    >
+      {loading ? "저장 중..." : "기록 저장하기"}
+    </button>
+  </div>
 
-{/* 몸무게 입력 섹션 */}
-<div style={{ marginTop: "20px", backgroundColor: "#f9fff9", borderRadius: "8px", padding: "16px" }}>
-  <h3>⚖️ 몸무게 입력</h3>
-  <div style={{ marginBottom: "16px" }}>
-    <label>몸무게 (kg):</label><br />
+  {/* ✅ 하단 카드: 몸무게 입력 */}
+  <div
+    style={{
+      padding: "16px",
+      borderRadius: "8px",
+      backgroundColor: "#fff8e1",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+    }}
+  >
+    <h3 style={{ fontWeight: "bold", marginBottom: "16px" }}>⚖️ 몸무게 입력</h3>
+
     <input
       type="number"
       value={weight}
       onChange={(e) => setWeight(e.target.value)}
-      placeholder="몸무게 입력"
-      style={{ padding: "8px", width: "100%" }}
+      placeholder="몸무게 (kg)"
+      style={{
+        padding: "8px",
+        width: "100%",
+        marginBottom: "12px",
+        borderRadius: "4px",
+        border: "1px solid #ccc",
+      }}
     />
+
     <button
       onClick={async () => {
         if (!babyInfo || !weight) return;
@@ -386,15 +483,26 @@ export default function BabyPage() {
         alert("✅ 몸무게 저장 완료!");
       }}
       disabled={!weight}
-      style={{ marginTop: "8px", padding: "10px 20px", backgroundColor: "#28a745", color: "#fff", border: "none", borderRadius: "4px" }}
+      style={{
+        width: "100%",
+        padding: "10px",
+        backgroundColor: "#28a745",
+        color: "#fff",
+        border: "none",
+        borderRadius: "4px",
+        cursor: !weight ? "not-allowed" : "pointer",
+      }}
     >
       몸무게 저장하기
     </button>
   </div>
 </div>
 
-{/* 데일리 기록 출력 */}
-<div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fdfdfd", borderRadius: "8px" }}>
+</div>
+
+
+          {/* 데일리 기록 출력 */}
+          <div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fdfdfd", borderRadius: "8px" }}>
             <h2>📋 데일리 기록 ({selectedDate})</h2>
 
             {dailyGrouped.length > 0 ? (
@@ -412,7 +520,8 @@ export default function BabyPage() {
                   <tr>
                     <th style={thStyle}>시간</th>
                     <th style={thStyle}>분유(ml)</th>
-                    <th style={thStyle}>모유(분)</th>
+                    <th style={thStyle}>모유 (유축, ml)</th> {/* 유축 */}
+                    <th style={thStyle}>모유(분)</th> {/* 직접 수유 */}
                     <th style={thStyle}>소변</th>
                     <th style={thStyle}>대변</th>
                     <th style={thStyle}>삭제</th>
@@ -422,40 +531,79 @@ export default function BabyPage() {
                   {dailyGrouped.map((row, idx) => (
                     <tr key={idx}>
                       <td style={tdStyle}>{row.time}</td>
-                      {["feeding", "breastmilk", "urine", "poop"].map((type) => (
-                        <td
-                          key={type}
-                          style={{
-                            ...tdStyle,
-                            backgroundColor: "#fffbe6",
-                            cursor: "pointer",
-                            textAlign: "center",
-                          }}
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => {
-                            const newValue = e.currentTarget.textContent?.trim() || "";
-                            if (newValue && row.time && row.time !== "합계") {
-                              handleUpdateRecord(row.time, type, newValue);
-                            }
-                          }}
-                        >
-                          {row[type as keyof typeof row]}
-                        </td>
-                      ))}
+
+                      {/* feeding */}
+                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
+                        onBlur={(e) => {
+                          const newValue = e.currentTarget.textContent?.trim() || "";
+                          if (newValue && row.time) {
+                            handleUpdateRecord(row.time, "feeding", newValue);
+                          }
+                        }}
+                      >
+                        {row.feeding}
+                      </td>
+
+                      {/* breastmilk_ml (유축 모유) */}
+                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
+                        onBlur={(e) => {
+                          const newValue = e.currentTarget.textContent?.trim() || "";
+                          if (newValue && row.time) {
+                            handleUpdateRecord(row.time, "breastmilk_ml", newValue);
+                          }
+                        }}
+                      >
+                        {row.breastmilk_ml}
+                      </td>
+
+                      {/* breastmilk (직접 수유) */}
+                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
+                        onBlur={(e) => {
+                          const newValue = e.currentTarget.textContent?.trim() || "";
+                          if (newValue && row.time) {
+                            handleUpdateRecord(row.time, "breastmilk", newValue);
+                          }
+                        }}
+                      >
+                        {row.breastmilk}
+                      </td>
+
+                      {/* urine */}
+                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
+                        onBlur={(e) => {
+                          const newValue = e.currentTarget.textContent?.trim() || "";
+                          if (newValue && row.time) {
+                            handleUpdateRecord(row.time, "urine", newValue);
+                          }
+                        }}
+                      >
+                        {row.urine}
+                      </td>
+
+                      {/* poop */}
+                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
+                        onBlur={(e) => {
+                          const newValue = e.currentTarget.textContent?.trim() || "";
+                          if (newValue && row.time) {
+                            handleUpdateRecord(row.time, "poop", newValue);
+                          }
+                        }}
+                      >
+                        {row.poop}
+                      </td>
+
+                      {/* 삭제 버튼 */}
                       <td style={{ ...tdStyle, textAlign: "center" }}>
                         <button
                           onClick={async () => {
                             if (!babyInfo || !row.time) return;
-                            const types = ["feeding", "breastmilk", "urine", "poop"];
+                            const types = ["feeding", "breastmilk_ml", "breastmilk", "urine", "poop"];
                             const promises = types.map((type) => {
                               const recordId = `${selectedDate}-${row.time}-${type}`;
                               return doc(db, `babies/${babyInfo.id}/records`, recordId);
                             });
                             try {
-                              await Promise.all(
-                                promises.map((ref) => setDoc(ref, {}, { merge: false }))
-                              );
+                              await Promise.all(promises.map((ref) => setDoc(ref, {}, { merge: false })));
                               await fetchRecords();
                               alert(`🗑️ ${row.time}시 기록이 삭제되었습니다.`);
                             } catch (err) {
@@ -484,41 +632,70 @@ export default function BabyPage() {
             )}
           </div>
 
+
       
           {/* 주간 요약 출력 */}
-          <div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fdfdfd", borderRadius: "8px" }}>
-            <h2>📆 주간 요약</h2>
-      
-            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "20px" }}>
-                  <thead>
-                      <tr style={{ backgroundColor: "#f0f0f0", textAlign: "center" }}>
-                      <th style={{ padding: "8px" }}>날짜</th>
-                      <th>분유(ml)</th>
-                      <th>모유(분)</th>
-                      <th>모유 환산(ml)</th>
-                      <th>총 수유량</th>
-                      <th>소변</th>
-                      <th>대변</th>
-                      <th>몸무게</th>
-                      </tr>
-                  </thead>
-                  <tbody>
-                      {weeklySummary.map((day, i) => (
-                      <tr key={i} style={{ textAlign: "center", borderTop: "1px solid #ddd" }}>
-                          <td style={{ padding: "8px" }}>{day.date}</td>
-                          <td>{day.feeding}</td>
-                          <td>{day.breastfeeding}</td>
-                          <td>{day.breastToMl}</td>
-                          <td style={{ fontWeight: "bold" }}>{day.feeding + day.breastToMl}</td>
-                          <td>{day.urine}</td>
-                          <td>{day.poop}</td>
-                          <td>{day.weight !== null ? `${day.weight}kg` : "-"}</td>
-                      </tr>
-                      ))}
-                  </tbody>
-                  </table>
-      
-          </div>
+<div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fdfdfd", borderRadius: "8px" }}>
+  <h2>📆 주간 요약</h2>
+
+  <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "20px" }}>
+    <thead>
+      <tr style={{ backgroundColor: "#f0f0f0", textAlign: "center" }}>
+        <th style={{ padding: "8px" }}>날짜</th>
+        <th>분유(ml)</th>
+        <th>모유(유축, ml)</th>
+        <th>모유(직접, 분)</th>
+        <th>총 수유량</th>
+        <th>소변</th>
+        <th>대변</th>
+        <th>몸무게</th>
+        <th>권장량</th>
+        <th>평가</th>
+      </tr>
+    </thead>
+    <tbody>
+      {weeklySummary.map((day, i) => {
+        const total = day.feeding + day.breastToMl + day.breastExtracted;
+        const weight = day.weight;
+        const recommendedMin = weight ? Math.round(weight * 150) : null;
+        const recommendedMax = weight ? Math.round(weight * 180) : null;
+
+        let evaluation = "-";
+        let color = "black";
+        if (weight) {
+          if (total < recommendedMin) {
+            evaluation = "🔴 부족";
+            color = "red";
+          } else if (total > recommendedMax) {
+            evaluation = "🔵 과다";
+            color = "blue";
+          } else {
+            evaluation = "🟢 적절";
+            color = "green";
+          }
+        }
+
+        return (
+          <tr key={i} style={{ textAlign: "center", borderTop: "1px solid #ddd" }}>
+            <td style={{ padding: "8px" }}>{day.date}</td>
+            <td>{day.feeding}</td>
+            <td>{day.breastExtracted}</td>
+            <td>{day.breastDirect}</td>
+            <td style={{ fontWeight: "bold" }}>{total}</td>
+            <td>{day.urine}</td>
+            <td>{day.poop}</td>
+            <td>{weight ? `${weight}kg` : "-"}</td>
+            <td>{weight ? `${recommendedMin}~${recommendedMax}ml` : "-"}</td>
+            <td style={{ color }}>{evaluation}</td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+</div>
+
+
+
       
           {/* AI 분석 */}
           <div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#eef5ff", borderRadius: "8px" }}>
@@ -536,21 +713,42 @@ export default function BabyPage() {
 
 
 
-            {/* 📊 수유량 차트 시각화 */}
- <div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fffaf0", borderRadius: "8px" }}>
-  <h2>📊 주간 수유량 차트</h2>
-  <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={chartData}>
-        <XAxis dataKey="date" />
-        <YAxis />
-        <Tooltip />
-        <Legend />
-        <Line type="monotone" dataKey="feeding" name="분유" stroke="#8884d8" />
-        <Line type="monotone" dataKey="breast" name="모유(환산)" stroke="#82ca9d" />
-        <Line type="monotone" dataKey="total" name="총합" stroke="#ff7300" />
-      </LineChart>
-    </ResponsiveContainer>
-</div>
+            <div
+              style={{
+                marginTop: "40px",
+                padding: "16px",
+                backgroundColor: "#fffaf0",
+                borderRadius: "8px",
+              }}
+            >
+              <h2>📊 주간 수유량 차트</h2>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="total"
+                    name="총합"
+                    stroke="#ff7300"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Brush
+                    dataKey="date"
+                    height={30}
+                    stroke="#8884d8"
+                    startIndex={Math.max(chartData.length - 7, 0)}
+                    endIndex={chartData.length - 1}
+                    travellerWidth={10}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
 
 
     
