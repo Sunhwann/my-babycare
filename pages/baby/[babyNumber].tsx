@@ -662,7 +662,7 @@ export default function BabyPage() {
 
         let evaluation = "-";
         let color = "black";
-        if (weight) {
+        if (weight && recommendedMin !== null && recommendedMax !== null) {
           if (total < recommendedMin) {
             evaluation = "🔴 부족";
             color = "red";
@@ -670,7 +670,7 @@ export default function BabyPage() {
             evaluation = "🔵 과다";
             color = "blue";
           } else {
-            evaluation = "🟢 적절";
+            evaluation = "🟢 적정";
             color = "green";
           }
         }
