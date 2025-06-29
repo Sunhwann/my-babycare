@@ -624,14 +624,14 @@ export default function BabyPage() {
                 onBlur={(e) => {
                   const newValue = e.currentTarget.textContent?.trim() || "";
                   if (newValue && row.time) {
-                    handleUpdateRecord(row.time, key, newValue);
+                    handleUpdateRecord(row.time, key as keyof typeof row, newValue);
                   }
                 }}
               >
-                {(row as any)[key]}
-
+                {row[key as keyof typeof row]}
               </td>
             ))}
+
 
             <td style={{ ...tdStyle }}>
               <button
