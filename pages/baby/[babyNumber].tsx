@@ -7,6 +7,8 @@ import {
   getDoc, query, Timestamp,
 } from "firebase/firestore";
 import { format, addDays } from "date-fns";
+import WeekTips from "@/pages/components/weektips"; // 컴포넌트 분리 시 import 필요
+
 
 import {
   LineChart,
@@ -37,17 +39,19 @@ interface RecordEntry {
 }
 
 const thStyle = {
-    padding: "8px",
-    border: "1px solid #ccc",
-    fontWeight: "bold" as const,
-    textAlign: "center" as const,
-  };
-  
-  const tdStyle = {
-    padding: "8px",
-    border: "1px solid #ccc",
-  };
-  
+  padding: "10px",
+  border: "1px solid #ccc",
+  fontWeight: "bold",
+  textAlign: "center",
+};
+
+const tdStyle = {
+  padding: "10px",
+  border: "1px solid #ccc",
+  textAlign: "center",
+  minWidth: "60px",
+};
+
 
 export default function BabyPage() {
   const router = useRouter();
@@ -116,6 +120,10 @@ export default function BabyPage() {
   };
   
 
+
+  const [showBreastDetails, setShowBreastDetails] = useState(false);
+
+
   const handleSave = async () => {
     if (!babyInfo || !value || !selectedTime || !selectedDate || !recordType) return;
     setLoading(true);
@@ -164,13 +172,34 @@ export default function BabyPage() {
   const weeklySummary = Array.from({ length: 7 }, (_, i) => {
     const date = format(addDays(new Date(selectedDate), -6 + i), "yyyy-MM-dd");
     const dayRecords = records.filter((r) => r.date === date);
+  
     const feeding = dayRecords.filter((r) => r.type === "feeding").reduce((sum, r) => sum + r.value, 0);
     const breastDirect = dayRecords.filter((r) => r.type === "breastmilk").reduce((sum, r) => sum + r.value, 0);
     const breastExtracted = dayRecords.filter((r) => r.type === "breastmilk_ml").reduce((sum, r) => sum + r.value, 0);
     const breastToMl = breastDirect * 5;
+    const total = feeding + breastExtracted + breastToMl;
+  
     const urine = dayRecords.filter((r) => r.type === "urine").length;
     const poop = dayRecords.filter((r) => r.type === "poop").length;
     const weight = dayRecords.find((r) => r.type === "weight")?.value || null;
+  
+    // 권장 수유량 계산 (예: 몸무게 × 120 ~ 160ml)
+    let recommendedMin = null;
+    let recommendedMax = null;
+    let evaluation = null;
+  
+    if (weight) {
+      recommendedMin = Math.round(weight * 120);
+      recommendedMax = Math.round(weight * 160);
+  
+      if (total < recommendedMin) {
+        evaluation = "부족";
+      } else if (total > recommendedMax) {
+        evaluation = "과다";
+      } else {
+        evaluation = "적정";
+      }
+    }
   
     return {
       date,
@@ -181,6 +210,9 @@ export default function BabyPage() {
       urine,
       poop,
       weight,
+      recommendedMin,
+      recommendedMax,
+      evaluation,
     };
   });
   
@@ -263,19 +295,54 @@ export default function BabyPage() {
           <h1 style={{ fontSize: "24px", fontWeight: "bold", textAlign: "center" }}>
             {babyInfo ? `${babyInfo.name} 페이지` : "👶 아기 메인 페이지"}
           </h1>
-      
           {babyInfo && (
-            <div style={{ backgroundColor: "#f1f1f1", padding: "16px", borderRadius: "8px", marginTop: "16px" }}>
-              <h2 style={{ fontSize: "18px", fontWeight: "bold" }}>👤 아기 정보</h2>
-              <p><strong>이름:</strong> {babyInfo.name}</p>
-              <p><strong>생년월일:</strong> {babyInfo.birthdate}</p>
-              <p><strong>성별:</strong> {babyInfo.gender === "male" ? "남아" : "여아"}</p>
-              <p><strong>아기번호:</strong> {babyInfo.babyNumber}</p>
-              <p><strong>출생 {calculateDaysSinceBirth(babyInfo.birthdate)}일째</strong></p>
-            </div>
-          )}
+  <div
+    style={{
+      backgroundColor: "#f9f9ff",
+      padding: "20px",
+      borderRadius: "12px",
+      marginTop: "20px",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+    }}
+  >
+    <h2 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "16px", display: "flex", alignItems: "center" }}>
+      👤 <span style={{ marginLeft: "8px" }}>아기 정보</span>
+    </h2>
+
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
+      <div style={{ flex: "1 1 45%", minWidth: "140px" }}>
+        <p style={{ margin: "6px 0" }}><strong>🧸 이름:</strong> {babyInfo.name}</p>
+        <p style={{ margin: "6px 0" }}><strong>🎂 생년월일:</strong> {babyInfo.birthdate}</p>
+      </div>
+      <div style={{ flex: "1 1 45%", minWidth: "140px" }}>
+        <p style={{ margin: "6px 0" }}><strong>🚻 성별:</strong> {babyInfo.gender === "male" ? "남아" : "여아"}</p>
+        <p style={{ margin: "6px 0" }}><strong>🆔 아기번호:</strong> {babyInfo.babyNumber}</p>
+      </div>
+    </div>
+
+    <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid #ddd" }} />
+
+    <p style={{ fontSize: "15px", fontWeight: "bold", color: "#555" }}>
+      ⏳ 출생 <span style={{ color: "#000" }}>{calculateDaysSinceBirth(babyInfo.birthdate)}일째</span>
+    </p>
+  </div>
+)}
+
+
+<div
+  style={{
+  
+    borderRadius: "8px",
+    marginTop: "16px",
+    fontSize: "16px",
+    whiteSpace: "pre-line", // 핵심!
+    lineHeight: "1.6",
+  }}
+>
+{babyInfo && <WeekTips birthDate={babyInfo.birthdate} />}
+</div>
+
       
-          
           
             {/* 좌우 카드 전체 레이아웃 */}
                   <div
@@ -501,198 +568,263 @@ export default function BabyPage() {
 </div>
 
 
-          {/* 데일리 기록 출력 */}
-          <div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fdfdfd", borderRadius: "8px" }}>
-            <h2>📋 데일리 기록 ({selectedDate})</h2>
+     {/* 일간 테이블 */} 
 
-            {dailyGrouped.length > 0 ? (
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  marginTop: "16px",
-                  backgroundColor: "#ffffff",
-                  color: "#000",
-                  border: "1px solid #ccc",
-                }}
-              >
-                <thead style={{ backgroundColor: "#f0f0f0" }}>
-                  <tr>
-                    <th style={thStyle}>시간</th>
-                    <th style={thStyle}>분유(ml)</th>
-                    <th style={thStyle}>모유 (유축, ml)</th> {/* 유축 */}
-                    <th style={thStyle}>모유(분)</th> {/* 직접 수유 */}
-                    <th style={thStyle}>소변</th>
-                    <th style={thStyle}>대변</th>
-                    <th style={thStyle}>삭제</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dailyGrouped.map((row, idx) => (
-                    <tr key={idx}>
-                      <td style={tdStyle}>{row.time}</td>
+<div
+  style={{
+    marginTop: "40px",
+    padding: "16px",
+    backgroundColor: "#fdfdfd",
+    borderRadius: "8px",
+    overflowX: "auto", // 모바일 대응
+  }}
+>
+  <h2 style={{ fontSize: "18px", marginBottom: "12px" }}>
+    📋 데일리 기록 ({selectedDate})
+  </h2>
 
-                      {/* feeding */}
-                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
-                        onBlur={(e) => {
-                          const newValue = e.currentTarget.textContent?.trim() || "";
-                          if (newValue && row.time) {
-                            handleUpdateRecord(row.time, "feeding", newValue);
-                          }
-                        }}
-                      >
-                        {row.feeding}
-                      </td>
-
-                      {/* breastmilk_ml (유축 모유) */}
-                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
-                        onBlur={(e) => {
-                          const newValue = e.currentTarget.textContent?.trim() || "";
-                          if (newValue && row.time) {
-                            handleUpdateRecord(row.time, "breastmilk_ml", newValue);
-                          }
-                        }}
-                      >
-                        {row.breastmilk_ml}
-                      </td>
-
-                      {/* breastmilk (직접 수유) */}
-                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
-                        onBlur={(e) => {
-                          const newValue = e.currentTarget.textContent?.trim() || "";
-                          if (newValue && row.time) {
-                            handleUpdateRecord(row.time, "breastmilk", newValue);
-                          }
-                        }}
-                      >
-                        {row.breastmilk}
-                      </td>
-
-                      {/* urine */}
-                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
-                        onBlur={(e) => {
-                          const newValue = e.currentTarget.textContent?.trim() || "";
-                          if (newValue && row.time) {
-                            handleUpdateRecord(row.time, "urine", newValue);
-                          }
-                        }}
-                      >
-                        {row.urine}
-                      </td>
-
-                      {/* poop */}
-                      <td style={{ ...tdStyle, backgroundColor: "#fffbe6", textAlign: "center" }} contentEditable suppressContentEditableWarning
-                        onBlur={(e) => {
-                          const newValue = e.currentTarget.textContent?.trim() || "";
-                          if (newValue && row.time) {
-                            handleUpdateRecord(row.time, "poop", newValue);
-                          }
-                        }}
-                      >
-                        {row.poop}
-                      </td>
-
-                      {/* 삭제 버튼 */}
-                      <td style={{ ...tdStyle, textAlign: "center" }}>
-                        <button
-                          onClick={async () => {
-                            if (!babyInfo || !row.time) return;
-                            const types = ["feeding", "breastmilk_ml", "breastmilk", "urine", "poop"];
-                            const promises = types.map((type) => {
-                              const recordId = `${selectedDate}-${row.time}-${type}`;
-                              return doc(db, `babies/${babyInfo.id}/records`, recordId);
-                            });
-                            try {
-                              await Promise.all(promises.map((ref) => setDoc(ref, {}, { merge: false })));
-                              await fetchRecords();
-                              alert(`🗑️ ${row.time}시 기록이 삭제되었습니다.`);
-                            } catch (err) {
-                              console.error("삭제 오류:", err);
-                              alert("❌ 삭제 중 오류가 발생했습니다.");
-                            }
-                          }}
-                          style={{
-                            padding: "4px 8px",
-                            backgroundColor: "#dc3545",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: "4px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          삭제
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p>기록 없음</p>
-            )}
-          </div>
-
-
-      
-          {/* 주간 요약 출력 */}
-<div style={{ marginTop: "40px", padding: "16px", backgroundColor: "#fdfdfd", borderRadius: "8px" }}>
-  <h2>📆 주간 요약</h2>
-
-  <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "20px" }}>
-    <thead>
-      <tr style={{ backgroundColor: "#f0f0f0", textAlign: "center" }}>
-        <th style={{ padding: "8px" }}>날짜</th>
-        <th>분유(ml)</th>
-        <th>모유(유축, ml)</th>
-        <th>모유(직접, 분)</th>
-        <th>총 수유량</th>
-        <th>소변</th>
-        <th>대변</th>
-        <th>몸무게</th>
-        <th>권장량</th>
-        <th>평가</th>
+  {dailyGrouped.length > 0 ? (
+    <table
+    style={{
+      width: "100%",
+      tableLayout: "fixed", // ✅ 열 고정 비율 사용
+      borderCollapse: "collapse",
+      marginTop: "16px",
+      backgroundColor: "#ffffff",
+      color: "#000",
+      border: "1px solid #ccc",
+      fontSize: "14px",
+    }}
+  >
+    <thead style={{ backgroundColor: "#f0f0f0" }}>
+      <tr>
+        <th style={{ ...thStyle, width: "12%" }}>시간</th>
+        <th style={{ ...thStyle, width: "12%" }}>분유(ml)</th>
+        <th style={{ ...thStyle, width: "12%" }}>모유 (유축, ml)</th>
+        <th style={{ ...thStyle, width: "12%" }}>모유(분)</th>
+        <th style={{ ...thStyle, width: "12%" }}>소변</th>
+        <th style={{ ...thStyle, width: "12%" }}>대변</th>
+        <th style={{ ...thStyle, width: "16%" }}>삭제</th>
       </tr>
     </thead>
-    <tbody>
-      {weeklySummary.map((day, i) => {
-        const total = day.feeding + day.breastToMl + day.breastExtracted;
-        const weight = day.weight;
-        const recommendedMin = weight ? Math.round(weight * 150) : null;
-        const recommendedMax = weight ? Math.round(weight * 180) : null;
+      <tbody>
+        {dailyGrouped.map((row, idx) => (
+          <tr key={idx}>
+            <td style={tdStyle}>{row.time}</td>
 
-        let evaluation = "-";
-        let color = "black";
-        if (weight && recommendedMin !== null && recommendedMax !== null) {
-          if (total < recommendedMin) {
-            evaluation = "🔴 부족";
-            color = "red";
-          } else if (total > recommendedMax) {
-            evaluation = "🔵 과다";
-            color = "blue";
-          } else {
-            evaluation = "🟢 적정";
-            color = "green";
-          }
-        }
+            {["feeding", "breastmilk_ml", "breastmilk", "urine", "poop"].map((key) => (
+              <td
+                key={key}
+                style={{
+                  ...tdStyle,
+                  backgroundColor: "#fffbea",
+                }}
+                contentEditable
+                suppressContentEditableWarning
+                onBlur={(e) => {
+                  const newValue = e.currentTarget.textContent?.trim() || "";
+                  if (newValue && row.time) {
+                    handleUpdateRecord(row.time, key, newValue);
+                  }
+                }}
+              >
+                {row[key]}
+              </td>
+            ))}
 
-        return (
-          <tr key={i} style={{ textAlign: "center", borderTop: "1px solid #ddd" }}>
-            <td style={{ padding: "8px" }}>{day.date}</td>
-            <td>{day.feeding}</td>
-            <td>{day.breastExtracted}</td>
-            <td>{day.breastDirect}</td>
-            <td style={{ fontWeight: "bold" }}>{total}</td>
-            <td>{day.urine}</td>
-            <td>{day.poop}</td>
-            <td>{weight ? `${weight}kg` : "-"}</td>
-            <td>{weight ? `${recommendedMin}~${recommendedMax}ml` : "-"}</td>
-            <td style={{ color }}>{evaluation}</td>
+            <td style={{ ...tdStyle }}>
+              <button
+                onClick={async () => {
+                  if (!babyInfo || !row.time) return;
+                  const types = ["feeding", "breastmilk_ml", "breastmilk", "urine", "poop"];
+                  const promises = types.map((type) => {
+                    const recordId = `${selectedDate}-${row.time}-${type}`;
+                    return doc(db, `babies/${babyInfo.id}/records`, recordId);
+                  });
+                  try {
+                    await Promise.all(promises.map((ref) => setDoc(ref, {}, { merge: false })));
+                    await fetchRecords();
+                    alert(`🗑️ ${row.time}시 기록이 삭제되었습니다.`);
+                  } catch (err) {
+                    console.error("삭제 오류:", err);
+                    alert("❌ 삭제 중 오류가 발생했습니다.");
+                  }
+                }}
+                style={{
+                  padding: "4px 8px",
+                  fontSize: "12px",
+                  backgroundColor: "#ff6b6b",
+                  color: "#fff",
+                  border: "1px solid #f5a3a3",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                }}
+              >
+                삭제
+              </button>
+            </td>
           </tr>
-        );
-      })}
-    </tbody>
-  </table>
+        ))}
+      </tbody>
+    </table>
+  ) : (
+    <p style={{ fontSize: "13px", color: "#888" }}>기록 없음</p>
+  )}
 </div>
+
+
+
+
+
+
+     {/* 주간 테이블 */} 
+        <div
+      style={{
+        marginTop: "40px",
+        padding: "16px",
+        backgroundColor: "#fff",
+        borderRadius: "8px",
+        overflowX: "auto",
+      }}
+    >
+      <h2 style={{ marginBottom: "16px" }}>📊 주간 요약</h2>
+
+      <table
+        style={{
+          minWidth: "700px",
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "14px",
+          textAlign: "center",
+          border: "1px solid #ccc",
+        }}
+      >
+        <thead>
+          <tr style={{ backgroundColor: "#f0f0f0", lineHeight: "1.6" }}>
+            <th style={{ padding: "12px 8px" }} rowSpan={2}>항목</th>
+            <th style={{ padding: "12px 8px" }} rowSpan={2}>세부항목</th>
+            {weeklySummary.map((day, i) => (
+              <th key={i} style={{ padding: "12px 8px" }}>{day.date.slice(5)}</th>
+            ))}
+          </tr>
+          <tr />
+        </thead>
+        <tbody>
+          {/* 수유량 */}
+          <tr style={{ lineHeight: "1.6" }}>
+            <td style={{ padding: "12px 8px" }} rowSpan={showBreastDetails ? 5 : 3}>🍼 수유량</td>
+            <td style={{ padding: "12px 8px" }}>분유</td>
+            {weeklySummary.map((d, i) => (
+              <td key={i} style={{ padding: "12px 8px" }}>{d.feeding}ml</td>
+            ))}
+          </tr>
+
+          <tr
+            style={{ lineHeight: "1.6", cursor: "pointer", backgroundColor: "#f9f9f9" }}
+            onClick={() => setShowBreastDetails(!showBreastDetails)}
+          >
+            <td style={{ padding: "12px 8px" }}>모유 총량</td>
+            {weeklySummary.map((d, i) => (
+              <td key={i} style={{ padding: "12px 8px" }}>{d.breastExtracted + d.breastToMl}ml</td>
+            ))}
+          </tr>
+          {showBreastDetails && (
+            <>
+                <tr style={{ backgroundColor: "#f1f1f1" }}>
+              <td style={{ padding: "8px", textAlign: "left", fontSize: "12px" }}>┗ 유축</td>
+              {weeklySummary.map((d, i) => (
+                <td key={i} style={{ padding: "8px", fontSize: "12px" }}>{d.breastExtracted}ml</td>
+              ))}
+            </tr>
+            <tr style={{ backgroundColor: "#f1f1f1" }}>
+              <td style={{ padding: "8px", textAlign: "left", fontSize: "12px" }}>┗ 직접 (환산)</td>
+              {weeklySummary.map((d, i) => (
+                <td key={i} style={{ padding: "8px", fontSize: "12px" }}>
+                  {d.breastDirect}분 ({d.breastToMl}ml)
+                </td>
+              ))}
+            </tr>
+
+
+            </>
+          )}
+          <tr style={{ fontWeight: "bold", lineHeight: "1.6" }}>
+            <td style={{ padding: "12px 8px" }}>총 수유량</td>
+            {weeklySummary.map((d, i) => (
+              <td key={i} style={{ padding: "12px 8px" }}>{d.feeding + d.breastExtracted + d.breastToMl}ml</td>
+            ))}
+          </tr>
+
+          {/* 빈 줄 */}
+          <tr><td colSpan={weeklySummary.length + 2} style={{ height: "10px" }}></td></tr>
+
+          {/* 대소변 */}
+          <tr style={{ lineHeight: "1.6" }}>
+            <td style={{ padding: "12px 8px" }} rowSpan={2}>💧 대소변</td>
+            <td style={{ padding: "12px 8px" }}>소변</td>
+            {weeklySummary.map((d, i) => (
+              <td key={i} style={{ padding: "12px 8px" }}>{d.urine || "0"}회</td>
+            ))}
+          </tr>
+          <tr style={{ lineHeight: "1.6" }}>
+            <td style={{ padding: "12px 8px" }}>대변</td>
+            {weeklySummary.map((d, i) => (
+              <td key={i} style={{ padding: "12px 8px" }}>{d.poop || "0"}회</td>
+            ))}
+          </tr>
+
+          {/* 빈 줄 */}
+          <tr><td colSpan={weeklySummary.length + 2} style={{ height: "10px" }}></td></tr>
+
+          {/* 몸무게 */}
+          <tr style={{ lineHeight: "1.6" }}>
+            <td colSpan={2} style={{ padding: "12px 8px" }}>⚖️ 몸무게</td>
+            {weeklySummary.map((d, i) => (
+              <td key={i} style={{ padding: "12px 8px" }}>{d.weight ? `${d.weight}kg` : "-"}</td>
+            ))}
+          </tr>
+
+              {/* 권장 수유량 */}
+          <tr style={{ lineHeight: "1.6" }}>
+            <td colSpan={2} style={{ padding: "12px 8px" }}>🎯 권장 수유량</td>
+            {weeklySummary.map((d, i) => (
+              <td key={i} style={{ padding: "12px 8px" }}>
+                {d.recommendedMin && d.recommendedMax
+                  ? `${d.recommendedMin}~${d.recommendedMax}ml`
+                  : "-"}
+              </td>
+            ))}
+          </tr>
+
+
+                  
+          {/* 평가 */}
+          <tr style={{ lineHeight: "1.6" }}>
+            <td colSpan={2} style={{ padding: "12px 8px" }}>📝 평가</td>
+            {weeklySummary.map((d, i) => (
+              <td
+                key={i}
+                style={{
+                  padding: "12px 8px",
+                  color:
+                    d.evaluation === "부족"
+                      ? "red"
+                      : d.evaluation === "과다"
+                      ? "blue"
+                      : d.evaluation === "적정"
+                      ? "green"
+                      : "#888",
+                  fontWeight: "bold",
+                }}
+              >
+                {d.evaluation || "-"}
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
 
 
 
