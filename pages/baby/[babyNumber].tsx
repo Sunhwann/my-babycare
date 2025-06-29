@@ -48,7 +48,7 @@ const thStyle = {
 const tdStyle = {
   padding: "10px",
   border: "1px solid #ccc",
-  textAlign: "center",
+  textAlign: "center" as const,
   minWidth: "60px",
 };
 
@@ -695,7 +695,7 @@ export default function BabyPage() {
           width: "100%",
           borderCollapse: "collapse",
           fontSize: "14px",
-          textAlign: "center",
+          textAlign: "center" as const,
           border: "1px solid #ccc",
         }}
       >
