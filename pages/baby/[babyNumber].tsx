@@ -42,7 +42,7 @@ const thStyle = {
   padding: "10px",
   border: "1px solid #ccc",
   fontWeight: "bold",
-  textAlign: "center",
+  textAlign: "center" as const,
 };
 
 const tdStyle = {
