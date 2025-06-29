@@ -628,7 +628,8 @@ export default function BabyPage() {
                   }
                 }}
               >
-                {row[key]}
+                {(row as any)[key]}
+
               </td>
             ))}
 
